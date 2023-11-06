@@ -56,11 +56,12 @@ NO_ALIGNMENT_POSSIBLE_MSG = "No Alignment Possible"
 class GeneSequencing:
 
 	def __init__(self):
-		pass
+		self.banded = None
+		self.MaxCharactersToAlign = None
 
 	def align(self, seq1: str, seq2: str, banded: bool, align_length: int):
 		"""
-		Wrapper method to call either the unrestricted or banded alignment algorithm.
+		Wrapper method to call either the unrestricted or banded alignment algorithm
 
 		:param seq1: The first sequence, as a string
 		:param seq2: The second sequence, as a string
@@ -73,11 +74,11 @@ class GeneSequencing:
 		self.MaxCharactersToAlign = align_length
 
 		# trim the sequences to the specified length
-		seq1_trimmed = seq1[:self.MaxCharactersToAlign]
-		seq2_trimmed = seq2[:self.MaxCharactersToAlign]
+		seq1_trimmed = seq1[:align_length]
+		seq2_trimmed = seq2[:align_length]
 
 		# call the specified function
-		if self.banded:
+		if banded:
 			cache = align_banded(seq1_trimmed, seq2_trimmed)
 		else:
 			cache = align_unrestricted(seq1_trimmed, seq2_trimmed)
@@ -97,19 +98,7 @@ class GeneSequencing:
 		alignment2 = '{}  DEBUG:({} chars,align_len={}{})'.format(
 			alignment_diff2, len(seq2_trimmed), align_length, ',BANDED' if banded else '')
 
-		print("4")
-
-		# # FIXME DELETEME
-		# score = random.random()*100
-		# alignment1 = 'abc-easy  DEBUG:({} chars,align_len={}{})'.format(
-		# 	len(seq1), align_length, ',BANDED' if banded else '')
-		# alignment2 = 'as-123--  DEBUG:({} chars,align_len={}{})'.format(
-		# 	len(seq2), align_length, ',BANDED' if banded else '')
-
-		return_val = {'align_cost': score, 'seqi_first100': alignment1, 'seqj_first100': alignment2}
-		print(return_val)
-
-		return return_val
+		return {'align_cost': score, 'seqi_first100': alignment1, 'seqj_first100': alignment2}
 
 
 def align_unrestricted(seq1: str, seq2: str):
@@ -156,15 +145,6 @@ def align_unrestricted(seq1: str, seq2: str):
 
 	return cache
 
-#   - f i r s t w o r d
-# - * * * *
-# s * o - - >
-# d * < o - - >
-# w * < - o - - >
-# o   < - - o - - >
-# r     < - - o - - >
-# d       < - - o - - >
-
 
 def align_banded(seq1: str, seq2: str):
 	"""
@@ -178,6 +158,14 @@ def align_banded(seq1: str, seq2: str):
 	:return:  All dynamic sub-problems (edit distance comparisons), as a dictionary
 		[(row, col)] : (edit-distance, [left-prev, top-prev, diagonal-prev]{list of 3 booleans})
 	"""
+	#   - f i r s t w o r d
+	# - * * * *
+	# s * o - - >
+	# d * < o - - >
+	# w * < - o - - >
+	# o   < - - o - - >
+	# r     < - - o - - >
+	# d       < - - o - - >
 
 	# base case top left
 	cache = {(0, 0): (0, [False] * 3)}
@@ -199,8 +187,10 @@ def align_banded(seq1: str, seq2: str):
 			# if within left/right bounds
 			if 0 < col < len(seq2) + 1:
 				# find possible values for the sub-problem
-				top = float('inf') if (curr_middle - 1, col) not in cache else INDEL + cache[(curr_middle - 1, col)][EDIT_DISTANCE_INDEX]
-				left = float('inf') if (curr_middle, col - 1) not in cache else INDEL + cache[(curr_middle, col - 1)][EDIT_DISTANCE_INDEX]
+				top = float('inf') if (curr_middle - 1, col) not in cache \
+					else INDEL + cache[(curr_middle - 1, col)][EDIT_DISTANCE_INDEX]
+				left = float('inf') if (curr_middle, col - 1) not in cache \
+					else INDEL + cache[(curr_middle, col - 1)][EDIT_DISTANCE_INDEX]
 				diagonal = match(curr_middle, col, seq1, seq2) + cache[(curr_middle - 1, col - 1)][EDIT_DISTANCE_INDEX]
 
 				# result is the least cost distance
@@ -243,8 +233,6 @@ def build_alignments_strings(cache: dict, seq1: str, seq2: str):
 		# NOTE - remember that this is offset by row 0 and col 0 being base cases
 		seq1_char = seq1[curr_row - 1]
 		seq2_char = seq2[curr_col - 1]
-
-		assert prev_ptrs[LEFT_INDEX] or prev_ptrs[TOP_INDEX] or prev_ptrs[DIAGONAL_INDEX]  # FIXME DELETEME
 
 		# add to alignment strings depending on prev square
 		# NOTE - order here maintains precedence: left, dop, diagonal
