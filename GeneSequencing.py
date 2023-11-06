@@ -179,7 +179,7 @@ def align_banded(seq1: str, seq2: str):
 		cache[(0, col)] = (col * INDEL, [True, False, False])
 
 	# size of the diagonal (not including base case of null)
-	diagonal_len = min(len(seq1), len(seq2))
+	diagonal_len = len(seq1)
 
 	# compute remaining sub-problems
 	for curr_middle in range(1, diagonal_len + 1):
@@ -282,7 +282,7 @@ def match(row: int, col: int, seq1: str, seq2: str):
 
 def tests():
 	covid_a = "ATCGT"
-	covid_b = "AGTCGA"
+	covid_b = "AGT"
 	# covid_a = "GATTACAATAGCTGCATGCA"
 	# covid_b = "ATGCATGCGATCGACT"
 
