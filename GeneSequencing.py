@@ -37,6 +37,12 @@ GAP = '-'
 ROW = 0
 COL = 1
 
+# Only for banded algorithm
+D = 3  # num items to each side of the middle diagonal (where i == j)
+BANDWIDTH = 7
+
+NO_ALIGNMENT_POSSIBLE_MSG = "No Alignment Possible"
+
 #   | -   A   G   T   C   G   A
 # --+---------------------------
 # - | 0   5   10  15  20  25  30
@@ -66,14 +72,44 @@ class GeneSequencing:
 		self.banded = banded
 		self.MaxCharactersToAlign = align_length
 
-		# TODO Call my functions
-		score = random.random()*100
-		alignment1 = 'abc-easy  DEBUG:({} chars,align_len={}{})'.format(
-			len(seq1), align_length, ',BANDED' if banded else '')
-		alignment2 = 'as-123--  DEBUG:({} chars,align_len={}{})'.format(
-			len(seq2), align_length, ',BANDED' if banded else '')
+		# trim the sequences to the specified length
+		seq1_trimmed = seq1[:self.MaxCharactersToAlign]
+		seq2_trimmed = seq2[:self.MaxCharactersToAlign]
 
-		return {'align_cost': score, 'seqi_first100': alignment1, 'seqj_first100': alignment2}
+		# call the specified function
+		if self.banded:
+			cache = align_banded(seq1_trimmed, seq2_trimmed)
+		else:
+			cache = align_unrestricted(seq1_trimmed, seq2_trimmed)
+
+		# get the score
+		if (len(seq1_trimmed), len(seq2_trimmed)) in cache:
+			score = cache[(len(seq1_trimmed), len(seq2_trimmed))][EDIT_DISTANCE_INDEX]
+		else:
+			score = float('inf')
+
+		# backtrack through the result to create the alignment strings
+		alignment_diff1, alignment_diff2 = build_alignments_strings(cache, seq1_trimmed, seq2_trimmed)
+
+		# format alignment strings for easy debugging
+		alignment1 = '{}  DEBUG:({} chars,align_len={}{})'.format(
+			alignment_diff1, len(seq1_trimmed), align_length, ',BANDED' if banded else '')
+		alignment2 = '{}  DEBUG:({} chars,align_len={}{})'.format(
+			alignment_diff2, len(seq2_trimmed), align_length, ',BANDED' if banded else '')
+
+		print("4")
+
+		# # FIXME DELETEME
+		# score = random.random()*100
+		# alignment1 = 'abc-easy  DEBUG:({} chars,align_len={}{})'.format(
+		# 	len(seq1), align_length, ',BANDED' if banded else '')
+		# alignment2 = 'as-123--  DEBUG:({} chars,align_len={}{})'.format(
+		# 	len(seq2), align_length, ',BANDED' if banded else '')
+
+		return_val = {'align_cost': score, 'seqi_first100': alignment1, 'seqj_first100': alignment2}
+		print(return_val)
+
+		return return_val
 
 
 def align_unrestricted(seq1: str, seq2: str):
@@ -91,6 +127,7 @@ def align_unrestricted(seq1: str, seq2: str):
 	# base case top left
 	cache = {(0, 0): (0, [False] * 3)}
 
+	# base case rows
 	for row in range(1, len(seq1) + 1):
 		# rows: 0, 5, 10, 15, ...
 		cache[(row, 0)] = (row * INDEL, [False, True, False])
@@ -119,6 +156,15 @@ def align_unrestricted(seq1: str, seq2: str):
 
 	return cache
 
+#   - f i r s t w o r d
+# - * * * *
+# s * o - - >
+# d * < o - - >
+# w * < - o - - >
+# o   < - - o - - >
+# r     < - - o - - >
+# d       < - - o - - >
+
 
 def align_banded(seq1: str, seq2: str):
 	"""
@@ -132,9 +178,41 @@ def align_banded(seq1: str, seq2: str):
 	:return:  All dynamic sub-problems (edit distance comparisons), as a dictionary
 		[(row, col)] : (edit-distance, [left-prev, top-prev, diagonal-prev]{list of 3 booleans})
 	"""
-	cache = {}
 
-	pass
+	# base case top left
+	cache = {(0, 0): (0, [False] * 3)}
+
+	# base case rows
+	for row in range(1, D + 1):
+		cache[(row, 0)] = (row * INDEL, [False, True, False])
+
+	# base case cols
+	for col in range(1, D + 1):
+		cache[(0, col)] = (col * INDEL, [True, False, False])
+
+	# size of the diagonal (not including base case of null)
+	diagonal_len = min(len(seq1), len(seq2))
+
+	# compute remaining sub-problems
+	for curr_middle in range(1, diagonal_len + 1):
+		for col in range(curr_middle - D, curr_middle + 1 + D):
+			# if within left/right bounds
+			if 0 < col < len(seq2) + 1:
+				# find possible values for the sub-problem
+				top = float('inf') if (curr_middle - 1, col) not in cache else INDEL + cache[(curr_middle - 1, col)][EDIT_DISTANCE_INDEX]
+				left = float('inf') if (curr_middle, col - 1) not in cache else INDEL + cache[(curr_middle, col - 1)][EDIT_DISTANCE_INDEX]
+				diagonal = match(curr_middle, col, seq1, seq2) + cache[(curr_middle - 1, col - 1)][EDIT_DISTANCE_INDEX]
+
+				# result is the least cost distance
+				edit_distance = min(top, left, diagonal)
+
+				# set prev pointers to those that tied for lowest result
+				prev_ptrs = [left == edit_distance, top == edit_distance, diagonal == edit_distance]
+
+				# cache the result of the sub-problem
+				cache[(curr_middle, col)] = (edit_distance, prev_ptrs)
+
+	return cache
 
 
 def build_alignments_strings(cache: dict, seq1: str, seq2: str):
@@ -150,7 +228,7 @@ def build_alignments_strings(cache: dict, seq1: str, seq2: str):
 	"""
 	if (len(seq1), len(seq2)) not in cache:
 		# no valid solution (only possible in banded)
-		return None, None
+		return NO_ALIGNMENT_POSSIBLE_MSG, NO_ALIGNMENT_POSSIBLE_MSG
 
 	aligned1_arr = []
 	aligned2_arr = []
@@ -159,7 +237,6 @@ def build_alignments_strings(cache: dict, seq1: str, seq2: str):
 	curr_row = len(seq1)
 	curr_col = len(seq2)
 	while curr_row != 0 or curr_col != 0:
-		print(f"row: {curr_row}, col: {curr_col}")
 		prev_ptrs = cache[(curr_row, curr_col)][PREV_PTRS_INDEX]
 
 		# get letters corresponding to current row and col
@@ -195,7 +272,7 @@ def build_alignments_strings(cache: dict, seq1: str, seq2: str):
 			curr_col -= 1
 
 	# reverse arrays and convert to strings
-	aligned1 = "".join(aligned1_arr[::-1])  # TODO MAKE SURE THIS WORKS
+	aligned1 = "".join(aligned1_arr[::-1])
 	aligned2 = "".join(aligned2_arr[::-1])
 
 	return aligned1, aligned2
@@ -216,12 +293,20 @@ def match(row: int, col: int, seq1: str, seq2: str):
 
 
 def tests():
-	# covid_a = "ATCGT"
-	# covid_b = "AGTCGA"
-	covid_a = "GATTACAATAGCTGCATGCA"
-	covid_b = "ATGCATGCGATCGACT"
+	covid_a = "ATCGT"
+	covid_b = "AGTCGA"
+	# covid_a = "GATTACAATAGCTGCATGCA"
+	# covid_b = "ATGCATGCGATCGACT"
 
-	solution_cache = align_unrestricted(covid_a, covid_b)
+	# # unrestricted
+	# solution_cache = align_unrestricted(covid_a, covid_b)
+	# print(solution_cache)
+	# result1, result2 = build_alignments_strings(solution_cache, covid_a, covid_b)
+	# print(f"Alignment1: {result1}")
+	# print(f"Alignment2: {result2}")
+
+	# banded
+	solution_cache = align_banded(covid_a, covid_b)
 	print(solution_cache)
 	result1, result2 = build_alignments_strings(solution_cache, covid_a, covid_b)
 	print(f"Alignment1: {result1}")
@@ -229,4 +314,4 @@ def tests():
 
 
 if __name__ == "__main__":
-	pass
+	tests()
